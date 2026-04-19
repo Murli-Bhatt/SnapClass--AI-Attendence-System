@@ -68,9 +68,8 @@ def render_home_screen():
                 background: rgba(255, 255, 255, 0.03);
                 border: 1px solid rgba(255, 255, 255, 0.06);
                 border-radius: 18px;
-                padding: 2rem 1.5rem;
+                padding: 2rem 1.5rem 4rem 1.5rem;
                 text-align: center;
-                cursor: pointer;
                 transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
                 position: relative;
                 overflow: hidden;
@@ -144,27 +143,53 @@ def render_home_screen():
                 font-size: 0.8rem;
                 color: rgba(255, 255, 255, 0.35);
                 line-height: 1.6;
-                margin-bottom: 1.2rem;
+                margin-bottom: 0;
             }
 
-            .portal-arrow {
-                font-size: 0.75rem;
-                font-weight: 600;
-                letter-spacing: 1px;
-                text-transform: uppercase;
-                transition: all 0.3s ease;
+            /* ── Button styling visually placing it matching the card bottom ── */
+            div[data-testid="stHorizontalBlock"] .stButton {
+                width: 100% !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+                margin-top: -3.2rem !important; /* Perfect placement in the bottom padding */
+                position: relative;
+                z-index: 10;
             }
-
-            .portal-arrow-teacher {
-                color: #a78bfa;
+            div[data-testid="stHorizontalBlock"] .stButton > button {
+                display: block !important;
+                margin: 0 auto !important;
+                background: transparent !important;
+                border: none !important;
+                color: rgba(255, 255, 255, 0.7) !important;
+                padding: 0.4rem 1.5rem !important;
+                font-weight: 600 !important;
+                font-size: 0.8rem !important;
+                letter-spacing: 1px !important;
+                text-transform: uppercase !important;
+                border-radius: 8px !important;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                min-height: auto !important;
+                width: max-content !important;
             }
-
-            .portal-arrow-student {
-                color: #55efc4;
+            
+            /* Teacher specific text color on hover */
+            div[data-testid="column"]:nth-of-type(2) .stButton > button:hover {
+                color: #a78bfa !important;
+                background: rgba(167, 139, 250, 0.05) !important;
+                letter-spacing: 2.5px !important;
             }
-
-            .portal-card:hover .portal-arrow {
-                letter-spacing: 3px;
+            
+            /* Student specific text color on hover */
+            div[data-testid="column"]:nth-of-type(3) .stButton > button:hover {
+                color: #55efc4 !important;
+                background: rgba(85, 239, 196, 0.05) !important;
+                letter-spacing: 2.5px !important;
+            }
+            
+            div[data-testid="stHorizontalBlock"] .stButton > button:focus {
+                box-shadow: none !important;
+                color: #ffffff !important;
             }
 
             /* ── Background Glow Effects ── */
@@ -216,30 +241,6 @@ def render_home_screen():
             .feature-pill-icon {
                 font-size: 0.85rem;
             }
-
-            /* ── Override Streamlit Button Styling ── */
-            div[data-testid="stHorizontalBlock"] .stButton > button {
-                background: transparent !important;
-                border: none !important;
-                padding: 0 !important;
-                color: transparent !important;
-                height: 2px !important;
-                min-height: 2px !important;
-                margin: -1rem 0 0 0 !important;
-                line-height: 0 !important;
-                font-size: 0 !important;
-                box-shadow: none !important;
-                overflow: hidden !important;
-            }
-
-            div[data-testid="stHorizontalBlock"] .stButton > button:hover {
-                background: transparent !important;
-                border: none !important;
-            }
-
-            div[data-testid="stHorizontalBlock"] .stButton > button:focus {
-                box-shadow: none !important;
-            }
         </style>
 
         <div class="glow-purple"></div>
@@ -259,7 +260,7 @@ def render_home_screen():
         unsafe_allow_html=True,
     )
 
-    # ── Portal Cards using HTML + hidden Streamlit buttons for click handling ──
+    # ── Portal Cards using HTML + Streamlit buttons ──
     col_spacer_l, col_teacher, col_student, col_spacer_r = st.columns(
         [0.5, 2, 2, 0.5], gap="small"
     )
@@ -273,12 +274,11 @@ def render_home_screen():
                 <div class="portal-desc">
                     Manage classes, take attendance<br>with face recognition, and view reports.
                 </div>
-                <div class="portal-arrow portal-arrow-teacher">Enter →</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        teacher_clicked = st.button("t", key="btn_teacher", use_container_width=True)
+        teacher_clicked = st.button("ENTER →", key="btn_teacher", use_container_width=True)
 
     with col_student:
         st.markdown(
@@ -289,12 +289,11 @@ def render_home_screen():
                 <div class="portal-desc">
                     Register your face, view attendance<br>history, and download reports.
                 </div>
-                <div class="portal-arrow portal-arrow-student">Enter →</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        student_clicked = st.button("s", key="btn_student", use_container_width=True)
+        student_clicked = st.button("ENTER →", key="btn_student", use_container_width=True)
 
     # ── Feature Pills ──
     st.markdown(
