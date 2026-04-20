@@ -3,7 +3,8 @@ from src.database.config import supabase
 
 def hash_password(password: str) -> str:
     """Hashes a password using bcrypt."""
-    salt = bcrypt.gensalt()
+    # Speed up hashing time complexity by explicitly lowering the rounds factor to 4
+    salt = bcrypt.gensalt(rounds=4)
     return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
 def verify_password(password: str, hashed: str) -> bool:
