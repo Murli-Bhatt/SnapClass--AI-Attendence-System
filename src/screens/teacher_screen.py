@@ -1,4 +1,5 @@
 import streamlit as st
+from src.database.db import register_teacher, login_teacher
 
 
 def render_teacher_screen():
@@ -100,22 +101,47 @@ def render_teacher_screen():
         unsafe_allow_html=True,
     )
 
-    # ── Centered Form Container ──
     _, center_col, _ = st.columns([1, 1.5, 1])
 
     with center_col:
+        # ---- DASHBOARD VIEW (Logged In) ----
+        if st.session_state["teacher_auth_view"] == "dashboard":
+            teacher_name = st.session_state.get("logged_in_teacher_name", "Teacher")
+            
+            # Show a toast pop-up on successful login
+            if st.session_state.get("show_login_toast", False):
+                st.toast(f"Welcome, {teacher_name}! 👋", icon="✅")
+                st.session_state["show_login_toast"] = False
+                
+            st.markdown(f"<h3 style='text-align: center; color: #a855f7; margin-top: 2rem;'>Hello, {teacher_name}!</h3>", unsafe_allow_html=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Logout", use_container_width=True):
+                st.session_state["teacher_auth_view"] = "login"
+                st.rerun()
+
         # ---- LOGIN VIEW ----
-        if st.session_state["teacher_auth_view"] == "login":
+        elif st.session_state["teacher_auth_view"] == "login":
             st.markdown("<h3 style='text-align: center; color: #fff; margin-bottom: 1.5rem;'>Login to Account</h3>", unsafe_allow_html=True)
             
-            username = st.text_input("Username", placeholder="Enter username", key="login_username")
-            password = st.text_input("Password", type="password", placeholder="Enter password", key="login_pass")
+            default_user = st.session_state.get("prefill_username", "")
+            default_pass = st.session_state.get("prefill_password", "")
+            
+            username = st.text_input("Username", value=default_user, placeholder="Enter username", key="login_username")
+            password = st.text_input("Password", type="password", value=default_pass, placeholder="Enter password", key="login_pass")
             
             st.markdown("<br>", unsafe_allow_html=True)
             
             if st.button("Login", use_container_width=True, type="primary"):
                 if username and password:
-                    st.success("Login attempted. (Logic to be implemented)")
+                    res = login_teacher(username, password)
+                    if res["success"]:
+                        st.session_state["logged_in_teacher_name"] = res["data"].get("name", username)
+                        st.session_state["teacher_auth_view"] = "dashboard"
+                        st.session_state["show_login_toast"] = True
+                        st.rerun()
+                    else:
+                        st.error(res["error"])
                 else:
                     st.warning("Please fill in both fields.")
             
@@ -139,7 +165,15 @@ def render_teacher_screen():
             if st.button("Register", use_container_width=True, type="primary"):
                 if name and username and password and confirm_password:
                     if password == confirm_password:
-                        st.success("Registration attempted. (Logic to be implemented)")
+                        res = register_teacher(username, password, name=name)
+                        if res["success"]:
+                            st.success("Registration successful! Switching to login...")
+                            st.session_state["prefill_username"] = username
+                            st.session_state["prefill_password"] = password
+                            st.session_state["teacher_auth_view"] = "login"
+                            st.rerun()
+                        else:
+                            st.error("Username already exists. Please try a different one.")
                     else:
                         st.error("Passwords do not match!")
                 else:
