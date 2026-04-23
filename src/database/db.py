@@ -69,3 +69,20 @@ def login_teacher(username: str, password: str) -> dict:
             return {"success": False, "error": "Incorrect password."}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+def create_student(name: str, face_embedding: list, voice_embedding: list = None) -> dict:
+    """
+    Registers a new student with their face (and optional voice) embedding.
+    Returns a dict with 'success' boolean and 'data' or 'error' message.
+    """
+    data = {
+        "name": name,
+        "face_embedding": face_embedding,
+        "voice_embedding": voice_embedding
+    }
+    
+    try:
+        response = supabase.table('students').insert(data).execute()
+        return {"success": True, "data": response.data}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

@@ -13,6 +13,7 @@ from src.components.header import render_header
 from src.screens.home_screen import render_home_screen
 from src.screens.teacher_screen import render_teacher_screen
 from src.screens.student_screen import render_student_screen
+from src.screens.student_dashboard import render_student_dashboard
 
 
 # ── Hide Streamlit Default Elements & Fix Spacing ──
@@ -70,6 +71,8 @@ elif screen == "teacher":
     render_teacher_screen()
 elif screen == "student":
     render_student_screen()
+elif screen == "student_dashboard":
+    render_student_dashboard()
 else:
     st.session_state["current_screen"] = "home"
     st.rerun()
