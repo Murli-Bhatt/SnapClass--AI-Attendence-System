@@ -2,62 +2,18 @@ import streamlit as st
 import numpy as np
 from PIL import Image
 
-from src.pipelines.face_pipeline import recognize_student_face, get_face_encoding, get_trained_svc
-from src.pipelines.voice_pipeline import get_voice_encoding, get_known_voices
 from src.database.db import create_student
-import contextlib
-
-@contextlib.contextmanager
-def full_screen_spinner(text):
-    placeholder = st.empty()
-    placeholder.markdown(
-        f"""
-        <style>
-            .fullscreen-overlay {{
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100vw;
-                height: 100vh;
-                background: rgba(15, 15, 15, 0.5);
-                backdrop-filter: blur(4px);
-                z-index: 999999;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-                color: #55efc4;
-                font-family: sans-serif;
-            }}
-            .spinner-loader {{
-                border: 6px solid rgba(85, 239, 196, 0.2);
-                border-top: 6px solid #55efc4;
-                border-radius: 50%;
-                width: 60px;
-                height: 60px;
-                animation: spin 1s linear infinite;
-                margin-bottom: 20px;
-            }}
-            @keyframes spin {{
-                0% {{ transform: rotate(0deg); }}
-                100% {{ transform: rotate(360deg); }}
-            }}
-        </style>
-        <div class="fullscreen-overlay">
-            <div class="spinner-loader"></div>
-            <h3>{text}</h3>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-    try:
-        yield
-    finally:
-        placeholder.empty()
+from src.utils.styles import apply_global_styles, full_screen_spinner
 
 def render_student_screen():
     """Student Portal screen with Face ID login and automated registration."""
+    # Apply shared styles
+    apply_global_styles()
     
+    # Lazy imports for AI logic to keep UI snappy
+    from src.pipelines.face_pipeline import recognize_student_face, get_face_encoding, get_trained_svc
+    from src.pipelines.voice_pipeline import get_voice_encoding, get_known_voices
+
     # Initialize states
     if "student_auth_step" not in st.session_state:
         st.session_state["student_auth_step"] = "capture"
@@ -71,34 +27,6 @@ def render_student_screen():
     st.markdown(
         """
         <style>
-            .screen-header {
-                display: flex;
-                align-items: center;
-                gap: 1rem;
-                margin-bottom: 2rem;
-            }
-            .screen-header-icon {
-                width: 50px;
-                height: 50px;
-                background: linear-gradient(135deg, rgba(0, 184, 148, 0.2), rgba(85, 239, 196, 0.2));
-                border: 1px solid rgba(0, 184, 148, 0.2);
-                border-radius: 14px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 24px;
-            }
-            .screen-header-text h2 {
-                margin: 0;
-                color: #ffffff;
-                font-size: 1.5rem;
-                font-weight: 700;
-            }
-            .screen-header-text p {
-                margin: 0;
-                color: rgba(255,255,255,0.4);
-                font-size: 0.85rem;
-            }
             .camera-container-title {
                 text-align: center;
                 color: #55efc4;
@@ -119,6 +47,10 @@ def render_student_screen():
                 padding: 2rem;
                 margin-top: 1rem;
             }
+            .screen-header-icon-student {
+                background: linear-gradient(135deg, rgba(0, 184, 148, 0.2), rgba(85, 239, 196, 0.2));
+                border: 1px solid rgba(0, 184, 148, 0.2);
+            }
         </style>
         """,
         unsafe_allow_html=True,
@@ -128,7 +60,7 @@ def render_student_screen():
         st.markdown(
             """
             <div class="screen-header">
-                <div class="screen-header-icon">👨‍🎓</div>
+                <div class="screen-header-icon screen-header-icon-student">👨‍🎓</div>
                 <div class="screen-header-text">
                     <h2>Student Portal</h2>
                     <p>Login securely using Face ID</p>

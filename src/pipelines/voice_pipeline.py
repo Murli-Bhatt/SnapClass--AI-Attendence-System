@@ -1,21 +1,22 @@
 import streamlit as st
 import numpy as np
-import librosa
-from resemblyzer import VoiceEncoder, preprocess_wav
 from src.database.config import supabase
 import json
 
 @st.cache_resource(show_spinner=False)
 def load_voice_encoder():
     """Load the VoiceEncoder model once and cache it to avoid high latency."""
+    from resemblyzer import VoiceEncoder
     return VoiceEncoder()
 
 def get_voice_encoding(audio_input):
     """
     Takes an audio input (file path or file-like object), preprocesses it,
     and returns a 256D voice embedding for the utterance.
-    Returns None if processing fails.
     """
+    import librosa
+    from resemblyzer import preprocess_wav
+    
     encoder = load_voice_encoder()
     
     try:
@@ -68,7 +69,7 @@ def get_known_voices():
 
 def recognize_student_voice(audio_input, threshold=0.75):
     """
-    Recognizes the voice in the audio using cosine similarity (dot product of normalized embeddings).
+    Recognizes the voice in the audio using cosine similarity.
     """
     encoding = get_voice_encoding(audio_input)
     if encoding is None:
@@ -99,24 +100,18 @@ def recognize_student_voice(audio_input, threshold=0.75):
 def register_student_voice_in_db(student_id: int, audio_input):
     """
     Extracts encoding from the audio and updates the student's voice_embedding in Supabase.
-    Invalidates the @st.cache_resource model so it's fresh for next login.
     """
     encoding = get_voice_encoding(audio_input)
     if encoding is None:
         return {"success": False, "error": "Could not extract voice features. Please try again."}
         
-    # Convert numpy array to list for JSON serialization in Supabase
     embedding_list = encoding.tolist()
     
     try:
-        # Update the student's record with the voice embedding JSONB data
         response = supabase.table('students').update({
             "voice_embedding": embedding_list
         }).eq('student_id', student_id).execute()
         
-        # ── CRITICAL STEP ── 
-        # Clear the cached known voices so that on the next recognition attempt,
-        # it fetches the fresh data with the new student.
         get_known_voices.clear()
         
         return {"success": True, "data": response.data}
