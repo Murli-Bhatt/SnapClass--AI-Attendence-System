@@ -142,3 +142,53 @@ def register_student_face_in_db(student_id: int, image_np):
         return {"success": True, "data": response.data}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+def recognize_multiple_faces(image_np, tolerance=0.5):
+    """
+    Detects multiple faces in an image, extracts their encodings, 
+    and predicts student IDs for each using the trained SVC logic.
+    Returns a list of recognized students.
+    """
+    detector, predictor, face_encoder = load_dlib_models()
+    faces = detector(image_np, 1)
+    
+    if len(faces) == 0:
+        return {"success": False, "error": "No faces detected in the image."}
+        
+    model_data = get_trained_svc()
+    if model_data is None:
+        return {"success": False, "error": "Database is empty. No faces to compare against."}
+        
+    results = []
+    
+    for face in faces:
+        bbox = (face.top(), face.right(), face.bottom(), face.left())
+        shape = predictor(image_np, face)
+        encoding = np.array(face_encoder.compute_face_descriptor(image_np, shape))
+        
+        if model_data["type"] == "fallback":
+            X = np.array(model_data["X"])
+            y = model_data["y"]
+            
+            distances = np.linalg.norm(X - encoding, axis=1)
+            min_distance_index = np.argmin(distances)
+            
+            if distances[min_distance_index] <= tolerance:
+                confidence = max(0, 1.0 - distances[min_distance_index])
+                results.append({"student_id": y[min_distance_index], "confidence": confidence, "bbox": bbox})
+                
+        elif model_data["type"] == "svc":
+            clf = model_data["model"]
+            encoding_reshaped = encoding.reshape(1, -1)
+            
+            prediction = clf.predict(encoding_reshaped)
+            probabilities = clf.predict_proba(encoding_reshaped)[0]
+            max_prob = max(probabilities)
+            
+            if max_prob >= 0.7: 
+                results.append({"student_id": prediction[0], "confidence": max_prob, "bbox": bbox})
+                
+    if len(results) > 0:
+        return {"success": True, "data": results}
+    else:
+        return {"success": False, "error": "Faces were detected, but none were recognized as registered students."}

@@ -14,7 +14,7 @@ def verify_password(password: str, hashed: str) -> bool:
 def teacher_exists(username: str) -> bool:
     """Checks if a teacher username already exists in the database."""
     try:
-        response = supabase.table('teachers').select('id').eq('username', username).execute()
+        response = supabase.table('teachers').select('teacher_id').eq('username', username).execute()
         return len(response.data) > 0
     except Exception as e:
         print(f"Error checking if teacher exists: {e}")
@@ -86,3 +86,84 @@ def create_student(name: str, face_embedding: list, voice_embedding: list = None
         return {"success": True, "data": response.data}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+def get_teacher_subjects(teacher_id: int) -> list:
+    """Fetches all subjects registered by a specific teacher."""
+    try:
+        response = supabase.table('subjects').select('*').eq('teacher_id', teacher_id).execute()
+        return response.data
+    except Exception as e:
+        print(f"Error fetching subjects: {e}")
+        return []
+
+def create_subject(subject_code: str, name: str, section: str, teacher_id: int) -> dict:
+    """Registers a new subject for a teacher."""
+    data = {
+        "subject_code": subject_code,
+        "name": name,
+        "section": section,
+        "teacher_id": teacher_id
+    }
+    try:
+        response = supabase.table('subjects').insert(data).execute()
+        return {"success": True, "data": response.data}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def log_attendance(subject_id: int, student_ids: list, is_present: bool = True) -> dict:
+    """Bulk inserts attendance logs for multiple students."""
+    from datetime import datetime
+    
+    if not student_ids:
+        return {"success": True, "data": [], "message": "No students to log."}
+        
+    # Prepare bulk insert data
+    now = datetime.utcnow().isoformat()
+    data = [
+        {
+            "subject_id": subject_id,
+            "student_id": s_id,
+            "is_present": is_present,
+            "timestamp": now
+        }
+        for s_id in student_ids
+    ]
+    
+    try:
+        response = supabase.table('attendance_logs').insert(data).execute()
+        return {"success": True, "data": response.data}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def get_attendance_records(subject_id: int) -> list:
+    """
+    Fetches attendance logs for a subject, joined with student details.
+    Supabase handles joins using foreign key relationships implicitly in select.
+    """
+    try:
+        # Assuming foreign key exists from attendance_logs.student_id -> students.student_id
+        # Supabase syntax for inner join is: '*, students(name, student_id)'
+        response = supabase.table('attendance_logs') \
+            .select('id, timestamp, is_present, student_id, students(name)') \
+            .eq('subject_id', subject_id) \
+            .order('timestamp', desc=True) \
+            .execute()
+            
+        # Flatten the data for easier use in DataFrames
+        flattened_data = []
+        for row in response.data:
+            student_data = row.get('students') or {}
+            student_name = student_data.get('name', f"Unknown (ID: {row.get('student_id')})")
+            
+            flattened_data.append({
+                "id": row.get("id"),
+                "timestamp": row.get("timestamp"),
+                "student_id": row.get("student_id"),
+                "student_name": student_name,
+                "is_present": row.get("is_present")
+            })
+            
+        return flattened_data
+    except Exception as e:
+        print(f"Error fetching attendance records: {e}")
+        return []

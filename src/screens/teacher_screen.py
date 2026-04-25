@@ -1,6 +1,7 @@
 import streamlit as st
 from src.database.db import register_teacher, login_teacher
 from src.utils.styles import apply_global_styles
+from src.screens.teacher_dashboard_features import render_manage_subject, render_take_attendance, render_attendance_record
 
 def render_teacher_screen():
     # Apply shared styles
@@ -134,22 +135,20 @@ def render_teacher_screen():
             
             # Render the selected card
             if view:
+                teacher_id = st.session_state.get("logged_in_teacher_id")
                 st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
                 
                 if view == "take_attendance":
                     st.markdown('<div class="card-header">📸 Take Attendance</div>', unsafe_allow_html=True)
-                    st.markdown('<div class="card-subtitle">Select a subject and start the attendance session via Face/Voice ID.</div>', unsafe_allow_html=True)
-                    st.info("Feature under construction: Camera stream and biometric matching will go here.")
+                    render_take_attendance(teacher_id)
                     
                 elif view == "manage_subject":
                     st.markdown('<div class="card-header">📚 Manage Subject</div>', unsafe_allow_html=True)
-                    st.markdown('<div class="card-subtitle">Add, edit, or remove subjects you are teaching.</div>', unsafe_allow_html=True)
-                    st.info("Feature under construction: Form to add/edit subjects and a table to list them.")
+                    render_manage_subject(teacher_id)
                     
                 elif view == "attendance_record":
                     st.markdown('<div class="card-header">📊 Attendance Record</div>', unsafe_allow_html=True)
-                    st.markdown('<div class="card-subtitle">View and export historical attendance data for your subjects.</div>', unsafe_allow_html=True)
-                    st.info("Feature under construction: Data table with filters (Date, Subject) and export options.")
+                    render_attendance_record(teacher_id)
                     
                 st.markdown('</div>', unsafe_allow_html=True)
             else:
@@ -194,6 +193,7 @@ def render_teacher_screen():
                         res = login_teacher(username, password)
                         if res["success"]:
                             st.session_state["logged_in_teacher_name"] = res["data"].get("name", username)
+                            st.session_state["logged_in_teacher_id"] = res["data"].get("teacher_id")
                             st.session_state["teacher_auth_view"] = "dashboard"
                             st.session_state["show_login_toast"] = True
                             st.rerun()

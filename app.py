@@ -10,10 +10,6 @@ st.set_page_config(
 
 # ── Imports ──
 from src.components.header import render_header
-from src.screens.home_screen import render_home_screen
-from src.screens.teacher_screen import render_teacher_screen
-from src.screens.student_screen import render_student_screen
-from src.screens.student_dashboard import render_student_dashboard
 
 
 # ── Hide Streamlit Default Elements & Fix Spacing ──
@@ -66,12 +62,16 @@ render_header()
 screen = st.session_state["current_screen"]
 
 if screen == "home":
+    from src.screens.home_screen import render_home_screen
     render_home_screen()
 elif screen == "teacher":
+    from src.screens.teacher_screen import render_teacher_screen
     render_teacher_screen()
 elif screen == "student":
+    from src.screens.student_screen import render_student_screen
     render_student_screen()
 elif screen == "student_dashboard":
+    from src.screens.student_dashboard import render_student_dashboard
     render_student_dashboard()
 else:
     st.session_state["current_screen"] = "home"
