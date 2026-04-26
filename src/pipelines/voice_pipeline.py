@@ -67,7 +67,7 @@ def get_known_voices():
         
     return {"X": np.array(X), "y": y}
 
-def recognize_student_voice(audio_input, threshold=0.75):
+def recognize_student_voice(audio_input, threshold=0.60):
     """
     Recognizes the voice in the audio using cosine similarity.
     """

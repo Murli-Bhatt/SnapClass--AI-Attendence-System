@@ -1,5 +1,5 @@
 import streamlit as st
-from src.database.db import get_teacher_subjects, create_subject, log_attendance, get_attendance_records
+from src.database.db import get_teacher_subjects, create_subject, log_attendance, get_attendance_records, get_enrolled_students
 from src.pipelines.face_pipeline import recognize_multiple_faces
 from src.pipelines.voice_pipeline import recognize_student_voice
 from src.database.config import supabase
@@ -66,6 +66,16 @@ def render_take_attendance(teacher_id):
     
     selected_subject_name = st.selectbox("Select Subject", options=list(subject_options.keys()))
     selected_subject_id = subject_options[selected_subject_name]
+    
+    # Clear state if subject changes
+    if "last_selected_subject_id" not in st.session_state:
+        st.session_state["last_selected_subject_id"] = selected_subject_id
+    elif st.session_state["last_selected_subject_id"] != selected_subject_id:
+        if "attendance_summary" in st.session_state:
+            st.session_state["attendance_summary"] = None
+        if "detected_students" in st.session_state:
+            st.session_state["detected_students"] = []
+        st.session_state["last_selected_subject_id"] = selected_subject_id
     
     st.markdown("---")
     
@@ -196,13 +206,63 @@ def render_take_attendance(teacher_id):
         
         if st.button("Confirm & Log Attendance", type="primary", use_container_width=True):
             with st.spinner("Saving records to database..."):
-                res = log_attendance(selected_subject_id, students_to_log)
+                # Ensure students to log are perfectly unique to prevent multiple records in one session
+                unique_students_to_log = list(set(students_to_log))
+                
+                res = log_attendance(selected_subject_id, unique_students_to_log)
                 if res["success"]:
                     st.toast("Attendance logged successfully!", icon="🎉")
+                    
+                    # Generate Summary
+                    enrolled_students = get_enrolled_students(selected_subject_id)
+                    present_ids = set(unique_students_to_log)
+                    
+                    present_list = []
+                    absent_list = []
+                    
+                    for student in enrolled_students:
+                        if student["student_id"] in present_ids:
+                            present_list.append(student["name"])
+                        else:
+                            absent_list.append(student["name"])
+                            
+                    st.session_state["attendance_summary"] = {
+                        "present": present_list,
+                        "absent": absent_list
+                    }
+                    
                     st.session_state["detected_students"] = [] # Clear state after logging
                     st.rerun()
                 else:
                     st.error(f"Failed to log attendance: {res['error']}")
+                    
+    # Display Summary Card
+    if st.session_state.get("attendance_summary"):
+        summary = st.session_state["attendance_summary"]
+        st.markdown("---")
+        st.markdown("### 📊 Attendance Summary")
+        
+        sum_col1, sum_col2 = st.columns(2)
+        with sum_col1:
+            st.markdown(f"#### ✅ Present ({len(summary['present'])})")
+            if summary['present']:
+                for name in summary['present']:
+                    st.success(name)
+            else:
+                st.info("No one present.")
+                
+        with sum_col2:
+            st.markdown(f"#### ❌ Absent ({len(summary['absent'])})")
+            if summary['absent']:
+                for name in summary['absent']:
+                    st.error(name)
+            else:
+                st.info("Everyone is present!")
+                
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("Close Summary", key="close_summary", use_container_width=True):
+            st.session_state["attendance_summary"] = None
+            st.rerun()
 
 
 def render_attendance_record(teacher_id):
