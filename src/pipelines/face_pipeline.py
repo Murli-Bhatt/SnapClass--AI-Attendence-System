@@ -72,17 +72,12 @@ def get_trained_svc():
     if len(X) == 0:
         return None
         
-    unique_classes = len(set(y))
-    
-    if unique_classes < 2:
-        return {"type": "fallback", "X": X, "y": y}
-        
-    # We have >= 2 students, train SVC with efficient parameters
-    clf = SVC(kernel='linear', probability=True, cache_size=700)
-    clf.fit(X, y)
-    return {"type": "svc", "model": clf}
+    # Always use distance-based matching (fallback) because students typically 
+    # only have 1 registration photo. SVC requires more samples per class 
+    # for proper probability calibration (Platt scaling).
+    return {"type": "fallback", "X": X, "y": y}
 
-def recognize_student_face(image_np, tolerance=0.5):
+def recognize_student_face(image_np, tolerance=0.6):
     """
     Recognizes the face in the image array using the trained SVC logic.
     """
@@ -143,7 +138,7 @@ def register_student_face_in_db(student_id: int, image_np):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-def recognize_multiple_faces(image_np, tolerance=0.5):
+def recognize_multiple_faces(image_np, tolerance=0.6):
     """
     Detects multiple faces in an image, extracts their encodings, 
     and predicts student IDs for each using the trained SVC logic.

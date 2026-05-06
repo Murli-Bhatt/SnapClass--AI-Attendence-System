@@ -25,10 +25,23 @@ def render_manage_subject(teacher_id):
     subjects = get_teacher_subjects(teacher_id)
     
     if subjects:
+        for s in subjects:
+            subj_id = s['subject_id']
+            # Get enrolled students count
+            enrolled = get_enrolled_students(subj_id)
+            s['enrolled_count'] = len(enrolled)
+            
+            # Get classes held count (unique timestamps)
+            try:
+                logs = supabase.table('attendence_logs').select('timestamp').eq('subject_id', subj_id).execute()
+                s['classes_held'] = len(set([log['timestamp'] for log in logs.data]))
+            except Exception:
+                s['classes_held'] = 0
+
         df = pd.DataFrame(subjects)
         # Reorder and rename columns for display
-        df = df[['subject_code', 'name', 'section']]
-        df.columns = ['Subject Code', 'Course Name', 'Section']
+        df = df[['subject_code', 'name', 'section', 'enrolled_count', 'classes_held']]
+        df.columns = ['Subject Code', 'Course Name', 'Section', 'Enrolled Students', 'Classes Held']
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
         st.info("You haven't registered any subjects yet.")
@@ -102,7 +115,7 @@ def render_take_attendance(teacher_id):
             /* Force uploaded image preview to match camera dimensions */
             div[data-testid="stImage"] img {
                 aspect-ratio: 16/9 !important;
-                object-fit: cover !important;
+                object-fit: contain !important;
                 max-height: 350px !important;
             }
             </style>
@@ -112,28 +125,63 @@ def render_take_attendance(teacher_id):
         
         _, upload_col, _ = st.columns([1, 1.5, 1])
         with upload_col:
-            uploaded_file = st.file_uploader("Upload Group Photo", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
+            uploaded_files = st.file_uploader("Upload Group Photos (Max 5)", type=["jpg", "jpeg", "png"], accept_multiple_files=True, label_visibility="collapsed")
+            images = []
             
-            if uploaded_file is not None:
-                image = Image.open(uploaded_file)
-                st.markdown('<div style="border-radius: 12px; overflow: hidden; border: 2px solid rgba(168, 85, 247, 0.3); box-shadow: 0 8px 30px rgba(0,0,0,0.5); margin-bottom: 1rem;">', unsafe_allow_html=True)
-                st.image(image, use_container_width=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+            if uploaded_files:
+                if len(uploaded_files) > 5:
+                    st.warning("You can only upload up to 5 photos at a time. Only the first 5 will be processed.")
+                    uploaded_files = uploaded_files[:5]
+                    
+                cols = st.columns(len(uploaded_files))
+                for idx, u_file in enumerate(uploaded_files):
+                    img = Image.open(u_file)
+                    images.append(img)
+                    with cols[idx]:
+                        st.markdown('<div style="border-radius: 12px; overflow: hidden; border: 2px solid rgba(168, 85, 247, 0.3); box-shadow: 0 8px 30px rgba(0,0,0,0.5); margin-bottom: 1rem;">', unsafe_allow_html=True)
+                        st.image(img, use_container_width=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
                 
-        if uploaded_file is not None:
+        if uploaded_files:
             _, btn_col, _ = st.columns([1, 1, 1])
             with btn_col:
-                analyze_clicked = st.button("Analyze Photo", key="btn_analyze_upload", type="primary", use_container_width=True)
+                analyze_clicked = st.button("Analyze Photos", key="btn_analyze_upload", type="primary", use_container_width=True)
             
             if analyze_clicked:
-                with st.spinner("Detecting and recognizing faces..."):
-                    img_array = np.array(image.convert("RGB")) # Ensure RGB
-                    res = recognize_multiple_faces(img_array)
-                    
-                    if res["success"]:
-                        st.session_state["detected_students"] = res["data"]
+                with st.spinner(f"Detecting and recognizing faces in {len(images)} photos..."):
+                    all_detected = []
+                    has_error = False
+                    for idx, img in enumerate(images):
+                        img_array = np.array(img.convert("RGB")) # Ensure RGB
+                        res = recognize_multiple_faces(img_array)
+                        
+                        if res["success"]:
+                            for match in res["data"]:
+                                match["source"] = f"Photo {idx + 1}"
+                                all_detected.append(match)
+                        else:
+                            st.error(res["error"])
+                            has_error = True
+                            
+                    if all_detected or not has_error:
+                        # Deduplicate by student_id, keeping highest confidence and aggregating sources
+                        deduped = {}
+                        for match in all_detected:
+                            s_id = match["student_id"]
+                            if s_id not in deduped:
+                                deduped[s_id] = {
+                                    "student_id": s_id,
+                                    "confidence": match["confidence"],
+                                    "sources": [match["source"]]
+                                }
+                            else:
+                                if match["source"] not in deduped[s_id]["sources"]:
+                                    deduped[s_id]["sources"].append(match["source"])
+                                if match["confidence"] > deduped[s_id]["confidence"]:
+                                    deduped[s_id]["confidence"] = match["confidence"]
+                                
+                        st.session_state["detected_students"] = list(deduped.values())
                     else:
-                        st.error(res["error"])
                         st.session_state["detected_students"] = []
                         
     with tab2:
@@ -155,6 +203,8 @@ def render_take_attendance(teacher_id):
                     res = recognize_multiple_faces(img_array)
                     
                     if res["success"]:
+                        for match in res["data"]:
+                            match["sources"] = ["Camera"]
                         st.session_state["detected_students"] = res["data"]
                     else:
                         st.error(res["error"])
@@ -170,7 +220,7 @@ def render_take_attendance(teacher_id):
                     res = recognize_student_voice(voice_audio)
                     if res["success"]:
                         # Format it to match the list structure of face detection
-                        st.session_state["detected_students"] = [{"student_id": res["student_id"], "confidence": res["confidence"]}]
+                        st.session_state["detected_students"] = [{"student_id": res["student_id"], "confidence": res["confidence"], "sources": ["Voice"]}]
                     else:
                         st.error(res["error"])
                         st.session_state["detected_students"] = []
@@ -178,7 +228,8 @@ def render_take_attendance(teacher_id):
     # Display Results & Submit
     if st.session_state.get("detected_students"):
         st.markdown("---")
-        st.markdown("### Recognized Students")
+        st.markdown("### Attendance Reports")
+        st.markdown("<p style='color: rgba(255,255,255,0.7);'>Please review attendance before confirming.</p>", unsafe_allow_html=True)
         
         students_to_log = []
         student_ids = [match["student_id"] for match in st.session_state["detected_students"]]
@@ -193,48 +244,65 @@ def render_take_attendance(teacher_id):
             except Exception as e:
                 print(f"Error fetching names: {e}")
                 
-        # Use a nice container to display them
+        # Build DataFrame for Review
+        review_data = []
         for match in st.session_state["detected_students"]:
             s_id = match["student_id"]
             s_name = name_map.get(s_id, "Unknown")
-            # Avoid logging duplicates if the same face was detected twice
             if s_id not in students_to_log:
                 students_to_log.append(s_id)
-                st.success(f"✅ Recognized: **{s_name}** (ID: {s_id}) - Confidence: {match['confidence']:.2f}")
+                
+            review_data.append({
+                "Name": s_name,
+                "ID": s_id,
+                "Source": ", ".join(match.get("sources", ["Unknown"])),
+                "Status": "✅ Present"
+            })
+            
+        import pandas as pd
+        if review_data:
+            df_review = pd.DataFrame(review_data)
+            st.dataframe(df_review, use_container_width=True, hide_index=True)
             
         st.markdown("<br>", unsafe_allow_html=True)
         
-        if st.button("Confirm & Log Attendance", type="primary", use_container_width=True):
-            with st.spinner("Saving records to database..."):
-                # Ensure students to log are perfectly unique to prevent multiple records in one session
-                unique_students_to_log = list(set(students_to_log))
-                
-                res = log_attendance(selected_subject_id, unique_students_to_log)
-                if res["success"]:
-                    st.toast("Attendance logged successfully!", icon="🎉")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Discard", type="secondary", use_container_width=True):
+                st.session_state["detected_students"] = []
+                st.rerun()
+        with col2:
+            if st.button("Confirm & Save", type="primary", use_container_width=True):
+                with st.spinner("Saving records to database..."):
+                    # Ensure students to log are perfectly unique to prevent multiple records in one session
+                    unique_students_to_log = list(set(students_to_log))
                     
-                    # Generate Summary
-                    enrolled_students = get_enrolled_students(selected_subject_id)
-                    present_ids = set(unique_students_to_log)
-                    
-                    present_list = []
-                    absent_list = []
-                    
-                    for student in enrolled_students:
-                        if student["student_id"] in present_ids:
-                            present_list.append(student["name"])
-                        else:
-                            absent_list.append(student["name"])
-                            
-                    st.session_state["attendance_summary"] = {
-                        "present": present_list,
-                        "absent": absent_list
-                    }
-                    
-                    st.session_state["detected_students"] = [] # Clear state after logging
-                    st.rerun()
-                else:
-                    st.error(f"Failed to log attendance: {res['error']}")
+                    res = log_attendance(selected_subject_id, unique_students_to_log)
+                    if res["success"]:
+                        st.toast("Attendance logged successfully!", icon="🎉")
+                        
+                        # Generate Summary
+                        enrolled_students = get_enrolled_students(selected_subject_id)
+                        present_ids = set(unique_students_to_log)
+                        
+                        present_list = []
+                        absent_list = []
+                        
+                        for student in enrolled_students:
+                            if student["student_id"] in present_ids:
+                                present_list.append(student["name"])
+                            else:
+                                absent_list.append(student["name"])
+                                
+                        st.session_state["attendance_summary"] = {
+                            "present": present_list,
+                            "absent": absent_list
+                        }
+                        
+                        st.session_state["detected_students"] = [] # Clear state after logging
+                        st.rerun()
+                    else:
+                        st.error(f"Failed to log attendance: {res['error']}")
                     
     # Display Summary Card
     if st.session_state.get("attendance_summary"):

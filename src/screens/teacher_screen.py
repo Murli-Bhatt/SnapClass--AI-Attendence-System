@@ -183,24 +183,27 @@ def render_teacher_screen():
                 default_user = st.session_state.get("prefill_username", "")
                 default_pass = st.session_state.get("prefill_password", "")
                 
-                username = st.text_input("Username", value=default_user, placeholder="Enter username", key="login_username")
-                password = st.text_input("Password", type="password", value=default_pass, placeholder="Enter password", key="login_pass")
-                
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                if st.button("Login", use_container_width=True, type="primary"):
-                    if username and password:
-                        res = login_teacher(username, password)
-                        if res["success"]:
-                            st.session_state["logged_in_teacher_name"] = res["data"].get("name", username)
-                            st.session_state["logged_in_teacher_id"] = res["data"].get("teacher_id")
-                            st.session_state["teacher_auth_view"] = "dashboard"
-                            st.session_state["show_login_toast"] = True
-                            st.rerun()
+                with st.form("login_form", clear_on_submit=False):
+                    username = st.text_input("Username", value=default_user, placeholder="Enter username", key="login_username")
+                    password = st.text_input("Password", type="password", value=default_pass, placeholder="Enter password", key="login_pass")
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    submitted = st.form_submit_button("Login", use_container_width=True, type="primary")
+                    
+                    if submitted:
+                        if username and password:
+                            res = login_teacher(username, password)
+                            if res["success"]:
+                                st.session_state["logged_in_teacher_name"] = res["data"].get("name", username)
+                                st.session_state["logged_in_teacher_id"] = res["data"].get("teacher_id")
+                                st.session_state["teacher_auth_view"] = "dashboard"
+                                st.session_state["show_login_toast"] = True
+                                st.rerun()
+                            else:
+                                st.error(res["error"])
                         else:
-                            st.error(res["error"])
-                    else:
-                        st.warning("Please fill in both fields.")
+                            st.warning("Please fill in both fields.")
                 
                 st.markdown('<div class="auth-divider">OR</div>', unsafe_allow_html=True)
                 
@@ -212,32 +215,69 @@ def render_teacher_screen():
             elif st.session_state["teacher_auth_view"] == "register":
                 st.markdown("<h3 style='text-align: center; color: #fff; margin-bottom: 1.5rem;'>Create Account</h3>", unsafe_allow_html=True)
 
-                name = st.text_input("Full Name", placeholder="e.g. John Doe", key="reg_name")
-                username = st.text_input("Username", placeholder="Choose a username", key="reg_username")
-                password = st.text_input("Password", type="password", placeholder="Create a password", key="reg_pass")
-                confirm_password = st.text_input("Confirm Password", type="password", placeholder="Repeat your password", key="reg_confirm")
-                
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                if st.button("Register", use_container_width=True, type="primary"):
-                    if name and username and password and confirm_password:
-                        if password == confirm_password:
-                            res = register_teacher(username, password, name=name)
-                            if res["success"]:
-                                st.success("Registration successful! Switching to login...")
-                                st.session_state["prefill_username"] = username
-                                st.session_state["prefill_password"] = password
-                                st.session_state["teacher_auth_view"] = "login"
-                                st.rerun()
+                with st.form("register_form", clear_on_submit=False):
+                    name = st.text_input("Full Name", placeholder="e.g. John Doe", key="reg_name")
+                    username = st.text_input("Username", placeholder="Choose a username", key="reg_username")
+                    password = st.text_input("Password", type="password", placeholder="Create a password", key="reg_pass")
+                    confirm_password = st.text_input("Confirm Password", type="password", placeholder="Repeat your password", key="reg_confirm")
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    submitted = st.form_submit_button("Register", use_container_width=True, type="primary")
+                    
+                    if submitted:
+                        if name and username and password and confirm_password:
+                            if password == confirm_password:
+                                res = register_teacher(username, password, name=name)
+                                if res["success"]:
+                                    st.success("Registration successful! Switching to login...")
+                                    st.session_state["prefill_username"] = username
+                                    st.session_state["prefill_password"] = password
+                                    st.session_state["teacher_auth_view"] = "login"
+                                    st.rerun()
+                                else:
+                                    st.error("Username already exists. Please try a different one.")
                             else:
-                                st.error("Username already exists. Please try a different one.")
+                                st.error("Passwords do not match!")
                         else:
-                            st.error("Passwords do not match!")
-                    else:
-                        st.warning("Please fill in all fields.")
+                            st.warning("Please fill in all fields.")
                 
                 st.markdown('<div class="auth-divider">OR</div>', unsafe_allow_html=True)
                 
                 if st.button("Back to Login", use_container_width=True):
                     st.session_state["teacher_auth_view"] = "login"
                     st.rerun()
+
+    # JS snippet to enable 'Enter' to focus the next input field
+    import streamlit.components.v1 as components
+    components.html(
+        """
+        <script>
+            const parentDoc = window.parent.document;
+            function attachListeners() {
+                const inputs = Array.from(parentDoc.querySelectorAll('input[type="text"], input[type="password"]'));
+                inputs.forEach((input, index) => {
+                    if (input.dataset.hasEnterListener === "true") return;
+                    input.addEventListener('keydown', function(event) {
+                        if (event.key === 'Enter') {
+                            event.preventDefault();
+                            if (index < inputs.length - 1) {
+                                inputs[index + 1].focus();
+                            } else {
+                                const btn = parentDoc.querySelector('button[kind="primaryFormSubmit"]') || parentDoc.querySelector('button[kind="primary"]');
+                                if (btn) btn.click();
+                            }
+                        }
+                    });
+                    input.dataset.hasEnterListener = "true";
+                });
+            }
+            // Run multiple times to catch elements after Streamlit renders
+            attachListeners();
+            setTimeout(attachListeners, 100);
+            setTimeout(attachListeners, 500);
+        </script>
+        """,
+        height=0,
+        width=0
+    )
