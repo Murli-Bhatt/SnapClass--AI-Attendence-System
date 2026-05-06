@@ -278,7 +278,7 @@ def render_home_screen():
             """,
             unsafe_allow_html=True,
         )
-        teacher_clicked = st.button("ENTER →", key="btn_teacher", use_container_width=True)
+        teacher_clicked = st.button("ENTER →", key="btn_teacher", width="stretch")
 
     with col_student:
         st.markdown(
@@ -293,7 +293,7 @@ def render_home_screen():
             """,
             unsafe_allow_html=True,
         )
-        student_clicked = st.button("ENTER →", key="btn_student", use_container_width=True)
+        student_clicked = st.button("ENTER →", key="btn_student", width="stretch")
 
     # ── Feature Pills ──
     st.markdown(

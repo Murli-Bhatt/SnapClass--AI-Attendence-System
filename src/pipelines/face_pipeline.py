@@ -18,6 +18,81 @@ def load_dlib_models():
     
     return detector, predictor, face_encoder
 
+def get_robust_faces(image_np, detector):
+    """
+    Tries multiple strategies to find a face: original, grayscale, downsampled, and contrast-enhanced.
+    This handles issues with webcams where the face is too large, too dark, or poorly contrasted.
+    """
+    import numpy as np
+    from PIL import Image, ImageEnhance
+    import dlib
+    
+    # 1. Try original image
+    faces = detector(image_np, 0)
+    if len(faces) > 0: return faces
+    
+    faces = detector(image_np, 1)
+    if len(faces) > 0: return faces
+    
+    # 2. Try grayscale
+    gray_img = Image.fromarray(image_np).convert('L')
+    gray = np.array(gray_img)
+    
+    faces = detector(gray, 0)
+    if len(faces) > 0: return faces
+    
+    faces = detector(gray, 1)
+    if len(faces) > 0: return faces
+    
+    # 3. Try downsampling (for very large, close-up faces that exceed HOG window size)
+    max_size = max(gray_img.width, gray_img.height)
+    if max_size > 400:
+        scale = 400.0 / max_size
+        new_w, new_h = int(gray_img.width * scale), int(gray_img.height * scale)
+        small_img = gray_img.resize((new_w, new_h))
+        small_gray = np.array(small_img)
+        
+        small_faces = detector(small_gray, 0)
+        if len(small_faces) == 0:
+            small_faces = detector(small_gray, 1)
+            
+        if len(small_faces) > 0:
+            faces = dlib.rectangles()
+            for f in small_faces:
+                left = int(f.left() / scale)
+                top = int(f.top() / scale)
+                right = int(f.right() / scale)
+                bottom = int(f.bottom() / scale)
+                faces.append(dlib.rectangle(left, top, right, bottom))
+            return faces
+            
+    # 4. Try slight contrast enhancement
+    try:
+        enhancer = ImageEnhance.Contrast(gray_img)
+        high_contrast = np.array(enhancer.enhance(1.5))
+        faces = detector(high_contrast, 0)
+        if len(faces) > 0: return faces
+    except:
+        pass
+        
+    # 5. Ultimate Fallback: CNN Face Detector (much more robust to angles and tilts)
+    try:
+        import face_recognition_models
+        cnn_detector = dlib.cnn_face_detection_model_v1(face_recognition_models.cnn_face_detector_model_location())
+        # CNN detector expects RGB image
+        cnn_faces = cnn_detector(image_np, 0)
+        if len(cnn_faces) > 0:
+            faces = dlib.rectangles()
+            for f in cnn_faces:
+                # CNN detector returns mmod_rectangle, we need to extract the standard dlib.rectangle
+                faces.append(f.rect)
+            return faces
+    except Exception as e:
+        print(f"CNN detector fallback failed: {e}")
+        
+    return dlib.rectangles()
+
+
 def get_face_encoding(image_np):
     """
     Detects faces, finds landmarks, and returns the 128D encoding for the first face found.
@@ -25,9 +100,9 @@ def get_face_encoding(image_np):
     """
     detector, predictor, face_encoder = load_dlib_models()
     
-    # Run the HOG face detector on the image data
-    faces = detector(image_np, 1)
-    
+    # Run the robust face detector on the image data
+    faces = get_robust_faces(image_np, detector)
+            
     if len(faces) == 0:
         return None
         
@@ -145,8 +220,9 @@ def recognize_multiple_faces(image_np, tolerance=0.6):
     Returns a list of recognized students.
     """
     detector, predictor, face_encoder = load_dlib_models()
-    faces = detector(image_np, 1)
-    
+    # Run the robust face detector on the image data
+    faces = get_robust_faces(image_np, detector)
+            
     if len(faces) == 0:
         return {"success": False, "error": "No faces detected in the image."}
         

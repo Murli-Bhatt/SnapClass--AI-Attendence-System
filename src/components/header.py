@@ -88,7 +88,7 @@ def render_header():
         # Create columns to safely overlay a native Streamlit button onto the right side of the navbar
         col1, col2 = st.columns([7.5, 1])
         with col2:
-            if st.button("Home ↲", key="header_home_btn", use_container_width=True, type="tertiary"):
+            if st.button("Home ↲", key="header_home_btn", width="stretch", type="tertiary"):
                 st.session_state["current_screen"] = "home"
                 st.rerun()
 

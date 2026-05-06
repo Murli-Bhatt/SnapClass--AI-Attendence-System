@@ -42,7 +42,7 @@ def render_manage_subject(teacher_id):
         # Reorder and rename columns for display
         df = df[['subject_code', 'name', 'section', 'enrolled_count', 'classes_held']]
         df.columns = ['Subject Code', 'Course Name', 'Section', 'Enrolled Students', 'Classes Held']
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
     else:
         st.info("You haven't registered any subjects yet.")
         
@@ -139,13 +139,13 @@ def render_take_attendance(teacher_id):
                     images.append(img)
                     with cols[idx]:
                         st.markdown('<div style="border-radius: 12px; overflow: hidden; border: 2px solid rgba(168, 85, 247, 0.3); box-shadow: 0 8px 30px rgba(0,0,0,0.5); margin-bottom: 1rem;">', unsafe_allow_html=True)
-                        st.image(img, use_container_width=True)
+                        st.image(img, width="stretch")
                         st.markdown('</div>', unsafe_allow_html=True)
                 
         if uploaded_files:
             _, btn_col, _ = st.columns([1, 1, 1])
             with btn_col:
-                analyze_clicked = st.button("Analyze Photos", key="btn_analyze_upload", type="primary", use_container_width=True)
+                analyze_clicked = st.button("Analyze Photos", key="btn_analyze_upload", type="primary", width="stretch")
             
             if analyze_clicked:
                 with st.spinner(f"Detecting and recognizing faces in {len(images)} photos..."):
@@ -194,7 +194,7 @@ def render_take_attendance(teacher_id):
         if camera_file is not None:
             _, cam_btn_col, _ = st.columns([1, 1, 1])
             with cam_btn_col:
-                analyze_camera_clicked = st.button("Analyze Picture", key="btn_analyze_camera", type="primary", use_container_width=True)
+                analyze_camera_clicked = st.button("Analyze Picture", key="btn_analyze_camera", type="primary", width="stretch")
                 
             if analyze_camera_clicked:
                 with st.spinner("Detecting and recognizing faces..."):
@@ -262,17 +262,17 @@ def render_take_attendance(teacher_id):
         import pandas as pd
         if review_data:
             df_review = pd.DataFrame(review_data)
-            st.dataframe(df_review, use_container_width=True, hide_index=True)
+            st.dataframe(df_review, width="stretch", hide_index=True)
             
         st.markdown("<br>", unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Discard", type="secondary", use_container_width=True):
+            if st.button("Discard", type="secondary", width="stretch"):
                 st.session_state["detected_students"] = []
                 st.rerun()
         with col2:
-            if st.button("Confirm & Save", type="primary", use_container_width=True):
+            if st.button("Confirm & Save", type="primary", width="stretch"):
                 with st.spinner("Saving records to database..."):
                     # Ensure students to log are perfectly unique to prevent multiple records in one session
                     unique_students_to_log = list(set(students_to_log))
@@ -328,7 +328,7 @@ def render_take_attendance(teacher_id):
                 st.info("Everyone is present!")
                 
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("Close Summary", key="close_summary", use_container_width=True):
+        if st.button("Close Summary", key="close_summary", width="stretch"):
             st.session_state["attendance_summary"] = None
             st.rerun()
 
@@ -364,7 +364,7 @@ def render_attendance_record(teacher_id):
         
         st.dataframe(
             display_df, 
-            use_container_width=True, 
+            width="stretch", 
             hide_index=True,
             column_config={
                 "Present": st.column_config.CheckboxColumn("Present", default=True)

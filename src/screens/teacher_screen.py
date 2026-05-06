@@ -119,15 +119,15 @@ def render_teacher_screen():
             # The 3 feature buttons
             col1, col2, col3 = st.columns(3)
             with col1:
-                if st.button("📸 Take Attendance", use_container_width=True):
+                if st.button("📸 Take Attendance", width="stretch"):
                     st.session_state["teacher_dashboard_view"] = "take_attendance"
                     st.rerun()
             with col2:
-                if st.button("📚 Manage Subject", use_container_width=True):
+                if st.button("📚 Manage Subject", width="stretch"):
                     st.session_state["teacher_dashboard_view"] = "manage_subject"
                     st.rerun()
             with col3:
-                if st.button("📊 Attendance Record", use_container_width=True):
+                if st.button("📊 Attendance Record", width="stretch"):
                     st.session_state["teacher_dashboard_view"] = "attendance_record"
                     st.rerun()
                     
@@ -167,7 +167,7 @@ def render_teacher_screen():
             st.markdown("<hr style='border-color: rgba(255,255,255,0.05); margin: 2rem 0 1.5rem 0;'>", unsafe_allow_html=True)
             _, logout_col, _ = st.columns([1, 1, 1])
             with logout_col:
-                if st.button("Logout", use_container_width=True):
+                if st.button("Logout", width="stretch"):
                     st.session_state["teacher_auth_view"] = "login"
                     st.session_state["teacher_dashboard_view"] = None
                     st.rerun()
@@ -189,7 +189,7 @@ def render_teacher_screen():
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    submitted = st.form_submit_button("Login", use_container_width=True, type="primary")
+                    submitted = st.form_submit_button("Login", width="stretch", type="primary")
                     
                     if submitted:
                         if username and password:
@@ -207,7 +207,7 @@ def render_teacher_screen():
                 
                 st.markdown('<div class="auth-divider">OR</div>', unsafe_allow_html=True)
                 
-                if st.button("Create a New Account", use_container_width=True):
+                if st.button("Create a New Account", width="stretch"):
                     st.session_state["teacher_auth_view"] = "register"
                     st.rerun()
 
@@ -223,7 +223,7 @@ def render_teacher_screen():
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    submitted = st.form_submit_button("Register", use_container_width=True, type="primary")
+                    submitted = st.form_submit_button("Register", width="stretch", type="primary")
                     
                     if submitted:
                         if name and username and password and confirm_password:
@@ -244,7 +244,7 @@ def render_teacher_screen():
                 
                 st.markdown('<div class="auth-divider">OR</div>', unsafe_allow_html=True)
                 
-                if st.button("Back to Login", use_container_width=True):
+                if st.button("Back to Login", width="stretch"):
                     st.session_state["teacher_auth_view"] = "login"
                     st.rerun()
 

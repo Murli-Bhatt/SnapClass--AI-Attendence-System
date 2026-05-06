@@ -136,7 +136,7 @@ def render_student_screen():
             
             with reg_col1:
                 if st.session_state["temp_face_img"]:
-                    st.image(st.session_state["temp_face_img"], use_container_width=True, caption="Captured Photo")
+                    st.image(st.session_state["temp_face_img"], width="stretch", caption="Captured Photo")
                     
             with reg_col2:
                 name = st.text_input("Full Name", placeholder="e.g. John Doe")
@@ -153,12 +153,12 @@ def render_student_screen():
         
         col1, col2 = st.columns([1, 1])
         with col1:
-            if st.button("Cancel & Go Back", use_container_width=True):
+            if st.button("Cancel & Go Back", width="stretch"):
                 st.session_state["temp_face_encoding"] = None
                 st.session_state["student_auth_step"] = "capture"
                 st.rerun()
         with col2:
-            if st.button("Complete Registration", type="primary", use_container_width=True):
+            if st.button("Complete Registration", type="primary", width="stretch"):
                 if not name.strip():
                     st.toast("⚠️ Please enter your full name.", icon="⚠️")
                 else:

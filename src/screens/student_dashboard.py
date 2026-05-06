@@ -53,7 +53,7 @@ def render_student_dashboard():
         with col1:
             subject_code = st.text_input("Subject Code", placeholder="e.g. CS101", label_visibility="collapsed")
         with col2:
-            enroll_clicked = st.button("Enroll", use_container_width=True, type="primary")
+            enroll_clicked = st.button("Enroll", width="stretch", type="primary")
             
         if enroll_clicked:
             if not subject_code.strip():
@@ -84,7 +84,7 @@ def render_student_dashboard():
     if attendance_summary:
         import pandas as pd
         df = pd.DataFrame(attendance_summary)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
     else:
         st.info("You haven't enrolled in any subjects yet, or no classes have been held.")
 
