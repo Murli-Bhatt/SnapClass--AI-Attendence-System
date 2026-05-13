@@ -49,8 +49,11 @@ def get_robust_faces(image_np, detector, cnn_detector, scan_mode="quick"):
     scale = 1.0
     detect_image_np = image_np
     
-    if max_dim > MAX_DETECTION_DIM:
-        scale = MAX_DETECTION_DIM / max_dim
+    # Use a smaller dimension for Deep Scan to prevent OOM crashes on cloud platforms
+    target_dim = 640 if scan_mode == "deep" else MAX_DETECTION_DIM
+    
+    if max_dim > target_dim:
+        scale = target_dim / max_dim
         new_w = int(w * scale)
         new_h = int(h * scale)
         
@@ -70,11 +73,12 @@ def get_robust_faces(image_np, detector, cnn_detector, scan_mode="quick"):
     elif scan_mode == "deep":
         # Try CNN detector
         try:
-            cnn_faces = cnn_detector(detect_image_np, 1)
+            # Upsample=0 is MUCH safer for memory-limited cloud environments (like Streamlit Cloud)
+            cnn_faces = cnn_detector(detect_image_np, 0)
             for f in cnn_faces:
                 faces.append(f.rect)
         except Exception as e:
-            pass
+            st.error(f"Deep Scan (CNN) failed due to memory limits. Falling back to Quick Scan. Error: {e}")
             # Fallback to HOG if CNN fails
             faces = detector(detect_image_np, 1)
             
