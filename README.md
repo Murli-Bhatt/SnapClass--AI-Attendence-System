@@ -66,4 +66,3 @@ snapclass/
 ├── app.py               # Main entry point for Streamlit
 ├── requirements.txt     # Python dependencies
 └── .env                 # Environment variables (not tracked in git)
-e

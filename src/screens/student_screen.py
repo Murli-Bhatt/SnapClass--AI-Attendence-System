@@ -84,7 +84,9 @@ def render_student_screen():
 
         if img_file_buffer is not None:
             # Process image
+            from src.pipelines.face_pipeline import fix_image_rotation
             img = Image.open(img_file_buffer)
+            img = fix_image_rotation(img)
             img_array = np.array(img)
             with full_screen_spinner("Analyzing face..."):
                 result = recognize_student_face(img_array)

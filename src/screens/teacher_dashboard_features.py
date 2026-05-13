@@ -101,41 +101,22 @@ def render_take_attendance(teacher_id):
     with tab1:
         st.markdown("<p style='color: rgba(255,255,255,0.7);'>Upload a photo of the classroom to automatically log attendance for all recognized faces.</p>", unsafe_allow_html=True)
         
-        st.markdown(
-            """
-            <style>
-            /* Make the file uploader dropzone much shorter and compact */
-            div[data-testid="stFileUploader"] section {
-                padding: 10px !important;
-                min-height: 80px !important;
-            }
-            div[data-testid="stFileUploader"] section > div {
-                gap: 5px;
-            }
-            /* Force uploaded image preview to match camera dimensions */
-            div[data-testid="stImage"] img {
-                aspect-ratio: 16/9 !important;
-                object-fit: contain !important;
-                max-height: 350px !important;
-            }
-            </style>
-            """, 
-            unsafe_allow_html=True
-        )
-        
         _, upload_col, _ = st.columns([1, 1.5, 1])
         with upload_col:
             uploaded_files = st.file_uploader("Upload Group Photos (Max 5)", type=["jpg", "jpeg", "png"], accept_multiple_files=True, label_visibility="collapsed")
             images = []
             
             if uploaded_files:
+                from src.pipelines.face_pipeline import fix_image_rotation
                 if len(uploaded_files) > 5:
                     st.warning("You can only upload up to 5 photos at a time. Only the first 5 will be processed.")
                     uploaded_files = uploaded_files[:5]
                     
                 cols = st.columns(len(uploaded_files))
                 for idx, u_file in enumerate(uploaded_files):
+                    # Fix rotation based on EXIF before processing
                     img = Image.open(u_file)
+                    img = fix_image_rotation(img)
                     images.append(img)
                     with cols[idx]:
                         st.markdown('<div style="border-radius: 12px; overflow: hidden; border: 2px solid rgba(168, 85, 247, 0.3); box-shadow: 0 8px 30px rgba(0,0,0,0.5); margin-bottom: 1rem;">', unsafe_allow_html=True)
@@ -143,6 +124,18 @@ def render_take_attendance(teacher_id):
                         st.markdown('</div>', unsafe_allow_html=True)
                 
         if uploaded_files:
+            # Show Scan Mode ONLY after upload
+            scan_mode_col1, scan_mode_col2 = st.columns([1, 1])
+            with scan_mode_col1:
+                scan_mode = st.radio(
+                    "Scan Quality",
+                    options=["Quick Scan (HOG)", "Deep Scan (CNN)"],
+                    horizontal=True,
+                    help="Quick Scan is faster. Deep Scan is more accurate for tilted/sideways faces.",
+                    key="upload_scan_mode"
+                )
+                mode_key = "quick" if "Quick" in scan_mode else "deep"
+            
             _, btn_col, _ = st.columns([1, 1, 1])
             with btn_col:
                 analyze_clicked = st.button("Analyze Photos", key="btn_analyze_upload", type="primary", width="stretch")
@@ -152,8 +145,8 @@ def render_take_attendance(teacher_id):
                     all_detected = []
                     has_error = False
                     for idx, img in enumerate(images):
-                        img_array = np.array(img.convert("RGB")) # Ensure RGB
-                        res = recognize_multiple_faces(img_array)
+                        img_array = np.array(img.convert("RGB"))
+                        res = recognize_multiple_faces(img_array, scan_mode=mode_key)
                         
                         if res["success"]:
                             for match in res["data"]:
@@ -192,15 +185,29 @@ def render_take_attendance(teacher_id):
             camera_file = st.camera_input("Take Picture", label_visibility="collapsed")
         
         if camera_file is not None:
+            # Show Scan Mode ONLY after capture
+            scan_mode_col1, scan_mode_col2 = st.columns([1, 1])
+            with scan_mode_col1:
+                cam_scan_mode = st.radio(
+                    "Scan Quality",
+                    options=["Quick Scan (HOG)", "Deep Scan (CNN)"],
+                    horizontal=True,
+                    help="Quick Scan is faster. Deep Scan is more accurate for tilted/sideways faces.",
+                    key="camera_scan_mode"
+                )
+                cam_mode_key = "quick" if "Quick" in cam_scan_mode else "deep"
+            
             _, cam_btn_col, _ = st.columns([1, 1, 1])
             with cam_btn_col:
                 analyze_camera_clicked = st.button("Analyze Picture", key="btn_analyze_camera", type="primary", width="stretch")
                 
             if analyze_camera_clicked:
                 with st.spinner("Detecting and recognizing faces..."):
+                    from src.pipelines.face_pipeline import fix_image_rotation
                     image = Image.open(camera_file)
+                    image = fix_image_rotation(image)
                     img_array = np.array(image.convert("RGB"))
-                    res = recognize_multiple_faces(img_array)
+                    res = recognize_multiple_faces(img_array, scan_mode=cam_mode_key)
                     
                     if res["success"]:
                         for match in res["data"]:
@@ -216,11 +223,15 @@ def render_take_attendance(teacher_id):
         
         if voice_audio is not None:
             if st.button("Analyze Voice", key="btn_analyze_voice", type="primary"):
-                with st.spinner("Recognizing voice..."):
-                    res = recognize_student_voice(voice_audio)
+                with st.spinner("Scanning recording for multiple voices..."):
+                    from src.pipelines.voice_pipeline import recognize_multiple_voices
+                    res = recognize_multiple_voices(voice_audio)
                     if res["success"]:
-                        # Format it to match the list structure of face detection
-                        st.session_state["detected_students"] = [{"student_id": res["student_id"], "confidence": res["confidence"], "sources": ["Voice"]}]
+                        # Now 'res["data"]' is a list of detected students
+                        for match in res["data"]:
+                            match["sources"] = ["Voice"]
+                        st.session_state["detected_students"] = res["data"]
+                        st.toast(f"✅ Detected {len(res['data'])} student(s) by voice!", icon="🎤")
                     else:
                         st.error(res["error"])
                         st.session_state["detected_students"] = []

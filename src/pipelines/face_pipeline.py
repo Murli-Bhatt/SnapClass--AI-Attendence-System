@@ -16,99 +16,96 @@ def load_dlib_models():
     # 128D Face Encoder
     face_encoder = dlib.face_recognition_model_v1(face_recognition_models.face_recognition_model_location())
     
-    return detector, predictor, face_encoder
+    # CNN detector (for Deep Scan)
+    cnn_detector = dlib.cnn_face_detection_model_v1(face_recognition_models.cnn_face_detector_model_location())
+    
+    return detector, predictor, face_encoder, cnn_detector
 
-def get_robust_faces(image_np, detector):
+def fix_image_rotation(image):
     """
-    Tries multiple strategies to find a face: original, grayscale, downsampled, and contrast-enhanced.
-    This handles issues with webcams where the face is too large, too dark, or poorly contrasted.
+    Corrects image orientation using EXIF metadata (standard for mobile photos).
+    Takes a PIL Image and returns a PIL Image.
     """
-    import numpy as np
-    from PIL import Image, ImageEnhance
+    from PIL import ImageOps
+    return ImageOps.exif_transpose(image)
+
+MAX_DETECTION_DIM = 1024
+
+def get_robust_faces(image_np, detector, cnn_detector, scan_mode="quick"):
+    """
+    Detects faces based on the selected mode:
+    - quick: HOG detector (fast, CPU)
+    - deep: CNN detector (highly accurate, handles angles/tilts)
+    
+    Handles high-resolution images by downsampling for detection and 
+    scaling coordinates back to the original size.
+    """
     import dlib
+    from PIL import Image
     
-    # 1. Try original image
-    faces = detector(image_np, 0)
-    if len(faces) > 0: return faces
+    # Calculate scaling factor for high-resolution images
+    h, w = image_np.shape[:2]
+    max_dim = max(h, w)
+    scale = 1.0
+    detect_image_np = image_np
     
-    faces = detector(image_np, 1)
-    if len(faces) > 0: return faces
-    
-    # 2. Try grayscale
-    gray_img = Image.fromarray(image_np).convert('L')
-    gray = np.array(gray_img)
-    
-    faces = detector(gray, 0)
-    if len(faces) > 0: return faces
-    
-    faces = detector(gray, 1)
-    if len(faces) > 0: return faces
-    
-    # 3. Try downsampling (for very large, close-up faces that exceed HOG window size)
-    max_size = max(gray_img.width, gray_img.height)
-    if max_size > 400:
-        scale = 400.0 / max_size
-        new_w, new_h = int(gray_img.width * scale), int(gray_img.height * scale)
-        small_img = gray_img.resize((new_w, new_h))
-        small_gray = np.array(small_img)
+    if max_dim > MAX_DETECTION_DIM:
+        scale = MAX_DETECTION_DIM / max_dim
+        new_w = int(w * scale)
+        new_h = int(h * scale)
         
-        small_faces = detector(small_gray, 0)
-        if len(small_faces) == 0:
-            small_faces = detector(small_gray, 1)
+        # Resize for faster detection
+        img_pil = Image.fromarray(image_np)
+        img_pil = img_pil.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        detect_image_np = np.array(img_pil)
+    
+    faces = dlib.rectangles()
+    
+    if scan_mode == "quick":
+        # Try HOG detector (multi-scale)
+        faces = detector(detect_image_np, 0)
+        if len(faces) == 0:
+            faces = detector(detect_image_np, 1) # One upsample for smaller faces
             
-        if len(small_faces) > 0:
-            faces = dlib.rectangles()
-            for f in small_faces:
-                left = int(f.left() / scale)
-                top = int(f.top() / scale)
-                right = int(f.right() / scale)
-                bottom = int(f.bottom() / scale)
-                faces.append(dlib.rectangle(left, top, right, bottom))
-            return faces
-            
-    # 4. Try slight contrast enhancement
-    try:
-        enhancer = ImageEnhance.Contrast(gray_img)
-        high_contrast = np.array(enhancer.enhance(1.5))
-        faces = detector(high_contrast, 0)
-        if len(faces) > 0: return faces
-    except:
-        pass
-        
-    # 5. Ultimate Fallback: CNN Face Detector (much more robust to angles and tilts)
-    try:
-        import face_recognition_models
-        cnn_detector = dlib.cnn_face_detection_model_v1(face_recognition_models.cnn_face_detector_model_location())
-        # CNN detector expects RGB image
-        cnn_faces = cnn_detector(image_np, 0)
-        if len(cnn_faces) > 0:
-            faces = dlib.rectangles()
+    elif scan_mode == "deep":
+        # Try CNN detector
+        try:
+            cnn_faces = cnn_detector(detect_image_np, 1)
             for f in cnn_faces:
-                # CNN detector returns mmod_rectangle, we need to extract the standard dlib.rectangle
                 faces.append(f.rect)
-            return faces
-    except Exception as e:
-        print(f"CNN detector fallback failed: {e}")
-        
-    return dlib.rectangles()
+        except Exception as e:
+            pass
+            # Fallback to HOG if CNN fails
+            faces = detector(detect_image_np, 1)
+            
+    # Rescale rectangles back to original image dimensions
+    if scale != 1.0:
+        inv_scale = 1.0 / scale
+        final_faces = dlib.rectangles()
+        for rect in faces:
+            final_faces.append(dlib.rectangle(
+                int(rect.left() * inv_scale),
+                int(rect.top() * inv_scale),
+                int(rect.right() * inv_scale),
+                int(rect.bottom() * inv_scale)
+            ))
+        return final_faces
+            
+    return faces
 
 
-def get_face_encoding(image_np):
+def get_face_encoding(image_np, scan_mode="quick"):
     """
     Detects faces, finds landmarks, and returns the 128D encoding for the first face found.
-    Returns None if no face is found.
     """
-    detector, predictor, face_encoder = load_dlib_models()
+    detector, predictor, face_encoder, cnn_detector = load_dlib_models()
     
-    # Run the robust face detector on the image data
-    faces = get_robust_faces(image_np, detector)
+    faces = get_robust_faces(image_np, detector, cnn_detector, scan_mode=scan_mode)
             
     if len(faces) == 0:
         return None
         
     shape = predictor(image_np, faces[0])
-    
-    # Compute the 128D vector representing the face.
     face_encoding = np.array(face_encoder.compute_face_descriptor(image_np, shape))
     
     return face_encoding
@@ -116,21 +113,19 @@ def get_face_encoding(image_np):
 @st.cache_resource(show_spinner=False)
 def get_trained_svc():
     """
-    Fetches student encodings from the database and trains an SVC model.
-    Caches the trained model so we only query the DB & train ONCE until invalidated.
+    Fetches student encodings from the database and trains an SVM model.
+    Uses data augmentation (Gaussian noise) to expand single samples into clusters.
     """
     from sklearn.svm import SVC
     
     try:
-        # Fetch only necessary columns
         response = supabase.table('students').select('student_id, face_embedding').execute()
         data = response.data
     except Exception as e:
-        print(f"Error fetching students from db: {e}")
         return None
         
-    X = []
-    y = []
+    X_raw = []
+    y_raw = []
     
     for row in data:
         if row.get('face_embedding') is not None:
@@ -139,99 +134,107 @@ def get_trained_svc():
                 if isinstance(embedding, str):
                     embedding = json.loads(embedding)
                     
-                X.append(np.array(embedding))
-                y.append(row['student_id'])
+                X_raw.append(np.array(embedding))
+                y_raw.append(row['student_id'])
             except Exception as e:
-                print(f"Error parsing embedding for student {row['student_id']}: {e}")
+                pass
                 
-    if len(X) == 0:
+    if len(X_raw) == 0:
         return None
         
-    # Always use distance-based matching (fallback) because students typically 
-    # only have 1 registration photo. SVC requires more samples per class 
-    # for proper probability calibration (Platt scaling).
-    return {"type": "fallback", "X": X, "y": y}
+    # Check for Fallback: If only one student is registered
+    unique_students = list(set(y_raw))
+    if len(unique_students) < 2:
+        return {"type": "fallback", "X": X_raw, "y": y_raw}
+        
+    # Data Augmentation: Expand 1 sample into 10 per student
+    X_aug = []
+    y_aug = []
+    noise_level = 0.01
+    samples_per_student = 10
+    
+    for emb, s_id in zip(X_raw, y_raw):
+        # Original sample
+        X_aug.append(emb)
+        y_aug.append(s_id)
+        # Synthetic samples with small Gaussian noise
+        for _ in range(samples_per_student - 1):
+            noise = np.random.normal(0, noise_level, emb.shape)
+            X_aug.append(emb + noise)
+            y_aug.append(s_id)
+            
+    # Train SVM
+    clf = SVC(kernel='linear', probability=True)
+    clf.fit(X_aug, y_aug)
+    
+    return {"type": "svc", "model": clf}
 
-def recognize_student_face(image_np, tolerance=0.6):
+def recognize_student_face(image_np, scan_mode="quick", tolerance=0.6):
     """
-    Recognizes the face in the image array using the trained SVC logic.
+    Recognizes the face using the trained SVM (or fallback distance).
     """
-    encoding = get_face_encoding(image_np)
+    encoding = get_face_encoding(image_np, scan_mode=scan_mode)
     if encoding is None:
-        return {"success": False, "error": "No face detected in the image. Please position yourself clearly."}
+        return {"success": False, "error": "No face detected in the image."}
         
     model_data = get_trained_svc()
-    
     if model_data is None:
-        return {"success": False, "error": "Database is empty. No faces to compare against."}
+        return {"success": False, "error": "Database is empty."}
         
     if model_data["type"] == "fallback":
+        # Single student fallback (distance based)
         X = np.array(model_data["X"])
         y = model_data["y"]
-        
         distances = np.linalg.norm(X - encoding, axis=1)
-        min_distance_index = np.argmin(distances)
-        
-        if distances[min_distance_index] <= tolerance:
-            confidence = max(0, 1.0 - distances[min_distance_index])
-            return {"success": True, "student_id": y[min_distance_index], "confidence": confidence}
-        else:
-            return {"success": False, "error": "Face not recognized in the system."}
+        min_idx = np.argmin(distances)
+        if distances[min_idx] <= tolerance:
+            return {"success": True, "student_id": y[min_idx], "confidence": 1.0 - distances[min_idx]}
+        return {"success": False, "error": "Face not recognized."}
             
     elif model_data["type"] == "svc":
         clf = model_data["model"]
         encoding_reshaped = encoding.reshape(1, -1)
-        
         prediction = clf.predict(encoding_reshaped)
-        probabilities = clf.predict_proba(encoding_reshaped)[0]
-        max_prob = max(probabilities)
+        probs = clf.predict_proba(encoding_reshaped)[0]
+        max_prob = max(probs)
         
-        if max_prob >= 0.7: 
+        if max_prob >= 0.65: # Confidence threshold for SVM
             return {"success": True, "student_id": prediction[0], "confidence": max_prob}
-        else:
-            return {"success": False, "error": f"Face not recognized (low confidence: {max_prob:.2f}). Please try again."}
+        return {"success": False, "error": "Face not recognized (low confidence)."}
 
 def register_student_face_in_db(student_id: int, image_np):
     """
     Extracts encoding from the image and updates the student's face_embedding in Supabase.
-    Invalidates the @st.cache_resource model so it's fresh for next login.
+    Uses Quick Scan for registration to ensure high quality (HOG prefers upright, clear faces).
     """
-    encoding = get_face_encoding(image_np)
+    encoding = get_face_encoding(image_np, scan_mode="quick")
     if encoding is None:
         return {"success": False, "error": "No face detected in the image. Please try again."}
         
-    embedding_list = encoding.tolist()
-    
     try:
-        response = supabase.table('students').update({
-            "face_embedding": embedding_list
+        supabase.table('students').update({
+            "face_embedding": encoding.tolist()
         }).eq('student_id', student_id).execute()
-        
         get_trained_svc.clear()
-        
-        return {"success": True, "data": response.data}
+        return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-def recognize_multiple_faces(image_np, tolerance=0.6):
+def recognize_multiple_faces(image_np, scan_mode="quick", tolerance=0.6):
     """
-    Detects multiple faces in an image, extracts their encodings, 
-    and predicts student IDs for each using the trained SVC logic.
-    Returns a list of recognized students.
+    Detects multiple faces in an image and recognizes them.
     """
-    detector, predictor, face_encoder = load_dlib_models()
-    # Run the robust face detector on the image data
-    faces = get_robust_faces(image_np, detector)
+    detector, predictor, face_encoder, cnn_detector = load_dlib_models()
+    faces = get_robust_faces(image_np, detector, cnn_detector, scan_mode=scan_mode)
             
     if len(faces) == 0:
         return {"success": False, "error": "No faces detected in the image."}
         
     model_data = get_trained_svc()
     if model_data is None:
-        return {"success": False, "error": "Database is empty. No faces to compare against."}
+        return {"success": False, "error": "Database is empty."}
         
     results = []
-    
     for face in faces:
         bbox = (face.top(), face.right(), face.bottom(), face.left())
         shape = predictor(image_np, face)
@@ -240,26 +243,20 @@ def recognize_multiple_faces(image_np, tolerance=0.6):
         if model_data["type"] == "fallback":
             X = np.array(model_data["X"])
             y = model_data["y"]
-            
             distances = np.linalg.norm(X - encoding, axis=1)
-            min_distance_index = np.argmin(distances)
-            
-            if distances[min_distance_index] <= tolerance:
-                confidence = max(0, 1.0 - distances[min_distance_index])
-                results.append({"student_id": y[min_distance_index], "confidence": confidence, "bbox": bbox})
+            min_idx = np.argmin(distances)
+            if distances[min_idx] <= tolerance:
+                results.append({"student_id": y[min_idx], "confidence": 1.0 - distances[min_idx], "bbox": bbox})
                 
         elif model_data["type"] == "svc":
             clf = model_data["model"]
             encoding_reshaped = encoding.reshape(1, -1)
-            
             prediction = clf.predict(encoding_reshaped)
-            probabilities = clf.predict_proba(encoding_reshaped)[0]
-            max_prob = max(probabilities)
-            
-            if max_prob >= 0.7: 
+            probs = clf.predict_proba(encoding_reshaped)[0]
+            max_prob = max(probs)
+            if max_prob >= 0.65:
                 results.append({"student_id": prediction[0], "confidence": max_prob, "bbox": bbox})
                 
     if len(results) > 0:
         return {"success": True, "data": results}
-    else:
-        return {"success": False, "error": "Faces were detected, but none were recognized as registered students."}
+    return {"success": False, "error": "Faces detected, but none recognized."}

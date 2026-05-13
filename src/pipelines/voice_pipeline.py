@@ -26,12 +26,16 @@ def get_voice_encoding(audio_input):
         # Preprocess the waveform for Resemblyzer (resampling, normalization, etc.)
         wav_preprocessed = preprocess_wav(wav, source_sr=source_sr)
         
+        # Ensure the audio isn't too short or mostly silence
+        duration = len(wav_preprocessed) / 16000 # Resemblyzer uses 16k sr
+        if duration < 1.2:
+            return None
+            
         # Compute the 256D vector representing the voice
         voice_encoding = np.array(encoder.embed_utterance(wav_preprocessed))
         
         return voice_encoding
     except Exception as e:
-        print(f"Error extracting voice encoding: {e}")
         return None
 
 @st.cache_resource(show_spinner=False)
@@ -44,7 +48,6 @@ def get_known_voices():
         response = supabase.table('students').select('student_id, voice_embedding').execute()
         data = response.data
     except Exception as e:
-        print(f"Error fetching students from db: {e}")
         return None
         
     X = []
@@ -60,16 +63,90 @@ def get_known_voices():
                 X.append(np.array(embedding))
                 y.append(row['student_id'])
             except Exception as e:
-                print(f"Error parsing voice embedding for student {row['student_id']}: {e}")
+                pass
                 
     if len(X) == 0:
         return None
         
     return {"X": np.array(X), "y": y}
 
-def recognize_student_voice(audio_input, threshold=0.60):
+def recognize_multiple_voices(audio_input, threshold=0.65):
+    """
+    Scans a long audio file by splitting it into segments of speech (VAD).
+    This is much more accurate for detecting 'voice changes' between students.
+    """
+    import librosa
+    from resemblyzer import preprocess_wav
+    
+    encoder = load_voice_encoder()
+    
+    try:
+        # Load audio
+        wav, source_sr = librosa.load(audio_input, sr=None)
+        
+        # 1. Voice Activity Detection (VAD) - Split audio into non-silent chunks
+        # top_db=20 is a standard sensitivity for classroom background noise
+        intervals = librosa.effects.split(wav, top_db=25)
+        
+        if len(intervals) == 0:
+            return {"success": False, "error": "No speech detected in the recording."}
+            
+        known_data = get_known_voices()
+        if not known_data:
+            return {"success": False, "error": "No students registered."}
+            
+        norm_X = known_data["X"] / np.linalg.norm(known_data["X"], axis=1, keepdims=True)
+        student_ids = known_data["y"]
+        
+        detected_students = {} # student_id -> highest_confidence
+        
+        # 2. Analyze each segment
+        for start_i, end_i in intervals:
+            # Extract the segment
+            segment_wav = wav[start_i:end_i]
+            
+            # Preprocess for Resemblyzer
+            segment_processed = preprocess_wav(segment_wav, source_sr=source_sr)
+            
+            # Skip if too short to be a valid "Present" (less than 0.6s)
+            if len(segment_processed) < 16000 * 0.6:
+                continue
+                
+            # If segment is very long (> 4s), it might be multiple people speaking. 
+            # We could sub-split, but VAD usually handles this if they pause.
+            
+            try:
+                emb = encoder.embed_utterance(segment_processed)
+                norm_emb = emb / np.linalg.norm(emb)
+                
+                similarities = np.dot(norm_X, norm_emb)
+                max_idx = np.argmax(similarities)
+                max_sim = similarities[max_idx]
+                
+                if max_sim >= threshold:
+                    s_id = student_ids[max_idx]
+                    if s_id not in detected_students or max_sim > detected_students[s_id]:
+                        detected_students[s_id] = float(max_sim)
+            except:
+                continue
+                
+        if not detected_students:
+            return {"success": False, "error": "Voices detected, but none matched registered students."}
+            
+        # Format results
+        results = []
+        for s_id, conf in detected_students.items():
+            results.append({"student_id": s_id, "confidence": conf})
+            
+        return {"success": True, "data": results}
+        
+    except Exception as e:
+        return {"success": False, "error": f"Voice analysis failed: {str(e)}"}
+
+def recognize_student_voice(audio_input, threshold=0.65):
     """
     Recognizes the voice in the audio using cosine similarity.
+    Threshold set to 0.65 based on user preference.
     """
     encoding = get_voice_encoding(audio_input)
     if encoding is None:
@@ -87,15 +164,17 @@ def recognize_student_voice(audio_input, threshold=0.60):
     norm_encoding = encoding / np.linalg.norm(encoding)
     norm_X = X / np.linalg.norm(X, axis=1, keepdims=True)
     
+    # Calculate cosine similarities
     similarities = np.dot(norm_X, norm_encoding)
     
     max_sim_index = np.argmax(similarities)
     max_sim = similarities[max_sim_index]
     
+    # Check against the increased threshold
     if max_sim >= threshold:
-        return {"success": True, "student_id": y[max_sim_index], "confidence": max_sim}
+        return {"success": True, "student_id": y[max_sim_index], "confidence": float(max_sim)}
     else:
-        return {"success": False, "error": f"Voice not recognized (low confidence: {max_sim:.2f}). Please try again."}
+        return {"success": False, "error": f"Voice not recognized (Confidence: {max_sim:.2f}). Please try again."}
 
 def register_student_voice_in_db(student_id: int, audio_input):
     """
